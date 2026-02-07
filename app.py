@@ -8,9 +8,15 @@ import torch
 
 st.set_page_config(page_title="HinSync", layout="wide")
 
-# =========================
-# LOAD MODELS (CACHED)
-# =========================
+# ======================
+# FONT PATH FIX
+# ======================
+
+FONT_PATH = os.path.join("fonts", "NotoSansDevanagari.ttf")
+
+# ======================
+# LOAD MODELS
+# ======================
 
 @st.cache_resource
 def load_whisper():
@@ -26,9 +32,9 @@ def load_translator():
 whisper_model = load_whisper()
 tokenizer, translator_model = load_translator()
 
-# =========================
-# TRANSLATION FUNCTION
-# =========================
+# ======================
+# TRANSLATE FUNCTION
+# ======================
 
 def translate_text(text):
     inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
@@ -36,9 +42,9 @@ def translate_text(text):
         translated = translator_model.generate(**inputs)
     return tokenizer.decode(translated[0], skip_special_tokens=True)
 
-# =========================
-# SRT FORMATTER
-# =========================
+# ======================
+# TIMESTAMP FORMAT
+# ======================
 
 def format_timestamp(seconds):
     hrs = int(seconds // 3600)
@@ -47,13 +53,14 @@ def format_timestamp(seconds):
     millis = int((seconds - int(seconds)) * 1000)
     return f"{hrs:02}:{mins:02}:{secs:02},{millis:03}"
 
-# =========================
-# CREATE SRT FILE
-# =========================
+# ======================
+# CREATE SRT
+# ======================
 
 def generate_srt(segments, filepath):
     with open(filepath, "w", encoding="utf-8") as f:
-        for i, seg in enumerate(segments, start=1):
+        for i, seg in enumerate(segments, 1):
+
             start = format_timestamp(seg.start)
             end = format_timestamp(seg.end)
 
@@ -63,40 +70,47 @@ def generate_srt(segments, filepath):
             f.write(f"{start} --> {end}\n")
             f.write(f"{hindi}\n\n")
 
-# =========================
-# BURN SUBTITLES
-# =========================
+# ======================
+# BURN SUBTITLES FIXED
+# ======================
 
 def burn_subtitles(video_path, srt_path, output_path):
+
+    font_abs = os.path.abspath(FONT_PATH)
+
+    vf = (
+        f"subtitles='{srt_path}':"
+        f"fontsdir='{os.path.dirname(font_abs)}':"
+        f"force_style='FontName=Noto Sans Devanagari'"
+    )
+
     command = [
         "ffmpeg",
         "-i", video_path,
-        "-vf", f"subtitles={srt_path}:force_style='FontName=Noto Sans Devanagari'",
+        "-vf", vf,
         "-c:a", "copy",
         output_path
     ]
 
     subprocess.run(command, check=True)
 
-# =========================
-# UI TITLE
-# =========================
+# ======================
+# UI
+# ======================
 
-st.title("🎬 HinSync - Speech → Hindi Subtitles + Translation")
+st.title("🎬 HinSync - English Speech → Hindi Subtitles")
 
 tabs = st.tabs(["🎥 Subtitle Generator", "🌐 Text Translator"])
 
-# ======================================================
-# TAB 1 : VIDEO SUBTITLE GENERATOR
-# ======================================================
+# =================================================
+# TAB 1
+# =================================================
 
 with tabs[0]:
 
-    st.header("Upload Video for Hindi Subtitles")
-
     uploaded_file = st.file_uploader("Upload Video", type=["mp4", "mov", "mkv"])
 
-    if uploaded_file is not None:
+    if uploaded_file:
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_video:
             temp_video.write(uploaded_file.read())
@@ -107,48 +121,40 @@ with tabs[0]:
         if st.button("Generate Subtitles"):
 
             with st.spinner("Transcribing..."):
-
                 segments, _ = whisper_model.transcribe(video_path)
-
                 segments = list(segments)
 
-            with st.spinner("Generating Hindi SRT..."):
-
+            with st.spinner("Creating Hindi SRT..."):
                 srt_path = video_path.replace(".mp4", ".srt")
                 generate_srt(segments, srt_path)
 
-            with st.spinner("Burning Subtitles into Video..."):
-
+            with st.spinner("Burning subtitles into video..."):
                 output_video = video_path.replace(".mp4", "_subtitled.mp4")
-
                 burn_subtitles(video_path, srt_path, output_video)
 
-            st.success("✅ Done!")
+            st.success("Done!")
 
             with open(output_video, "rb") as f:
                 st.download_button(
-                    "Download Subtitled Video",
+                    "Download Video",
                     f,
                     file_name="hinsync_output.mp4"
                 )
 
-# ======================================================
-# TAB 2 : TEXT TRANSLATOR
-# ======================================================
+# =================================================
+# TAB 2 TEXT TRANSLATOR
+# =================================================
 
 with tabs[1]:
-
-    st.header("English → Hindi Text Translator")
 
     user_text = st.text_area("Enter English Text")
 
     if st.button("Translate Text"):
 
-        if user_text.strip() == "":
-            st.warning("Enter text first")
-        else:
+        if user_text.strip():
+
             with st.spinner("Translating..."):
                 result = translate_text(user_text)
 
-            st.subheader("Hindi Translation")
+            st.subheader("Hindi Output")
             st.write(result)
