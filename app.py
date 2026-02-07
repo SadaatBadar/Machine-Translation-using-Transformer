@@ -10,9 +10,11 @@ st.title("🎧 HinSync")
 # ================= LOAD MODELS =================
 @st.cache_resource
 def load_models():
-    whisper = WhisperModel("base", device="cpu")
+    whisper = WhisperModel("tiny", device="cpu", compute_type="int8")
+
     tokenizer = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-hi")
     translator = MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-en-hi")
+
     return whisper, tokenizer, translator
 
 whisper_model, tokenizer, translator = load_models()
@@ -55,11 +57,9 @@ def generate_subtitles(segments):
         ass.write("[Events]\n")
         ass.write("Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\n")
 
-        # -------- LOOP SEGMENTS --------
         for i, seg in enumerate(segments, 1):
 
-            en = seg.text.strip()
-            hi = translate_to_hindi(en)
+            hi = translate_to_hindi(seg.text.strip())
 
             # ----- SRT -----
             srt.write(f"{i}\n")
@@ -91,7 +91,14 @@ if video_file:
             )
 
         with st.spinner("Transcribing & Translating..."):
-            segments, info = whisper_model.transcribe("audio.wav")
+
+            segments, info = whisper_model.transcribe(
+                "audio.wav",
+                beam_size=1,
+                vad_filter=True
+            )
+
+        segments = list(segments)
 
         generate_subtitles(segments)
 
@@ -110,6 +117,5 @@ if video_file:
         st.success(f"Detected language: {info.language}")
         st.video("output.mp4")
 
-        # -------- DOWNLOAD SRT --------
         with open("subs.srt", "rb") as f:
             st.download_button("Download SRT", f, file_name="subs.srt")
