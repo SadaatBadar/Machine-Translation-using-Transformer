@@ -26,15 +26,15 @@ def translate_to_hindi(text):
 # ================= SRT GENERATION =================
 def generate_srt(segments):
     with open("subs.srt", "w", encoding="utf-8") as f:
-
-        def fmt(t):
-            h = int(t // 3600)
-            m = int((t % 3600) // 60)
-            s = int(t % 60)
-            ms = int((t - int(t)) * 1000)
-            return f"{h:02}:{m:02}:{s:02},{ms:03}"
-
         for i, seg in enumerate(segments, 1):
+
+            def fmt(t):
+                h = int(t // 3600)
+                m = int((t % 3600) // 60)
+                s = int(t % 60)
+                ms = int((t - int(t)) * 1000)
+                return f"{h:02}:{m:02}:{s:02},{ms:03}"
+
             en = seg.text.strip()
             hi = translate_to_hindi(en)
 
@@ -81,7 +81,7 @@ with tab2:
 
         if st.button("Generate Captions"):
 
-            # ===== Extract Audio =====
+            # -------- Extract Audio --------
             with st.spinner("Extracting audio..."):
                 subprocess.run(
                     [
@@ -95,20 +95,20 @@ with tab2:
                     stderr=subprocess.DEVNULL
                 )
 
-            # ===== Transcribe =====
+            # -------- Speech to Text --------
             with st.spinner("Transcribing & Translating..."):
                 segments, info = whisper_model.transcribe("audio.wav")
 
             generate_srt(segments)
 
-            # ===== Burn SRT With Hindi Font =====
+            # -------- Burn Subtitles --------
             with st.spinner("Burning captions into video..."):
                 subprocess.run(
                     [
                         "ffmpeg", "-y",
                         "-i", "input.mp4",
                         "-vf",
-                        "subtitles=subs.srt:fontsdir=fonts:force_style='FontName=Noto Sans Devanagari'",
+                        "subtitles=subs.srt:fontsdir=./fonts",
                         "output.mp4"
                     ],
                     stdout=subprocess.DEVNULL,
