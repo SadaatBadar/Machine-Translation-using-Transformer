@@ -6,5 +6,6 @@ pandas
 numpy
 huggingface-hub
 faster-whisper
+ffmpeg-python
 
 
