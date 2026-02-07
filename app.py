@@ -23,34 +23,24 @@ def translate_to_hindi(text):
     outputs = translator.generate(**inputs, max_length=200)
     return tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-# ================= ASS SUBTITLE GENERATION =================
-def generate_ass(segments):
-    with open("subs.ass", "w", encoding="utf-8") as f:
-
-        f.write("[Script Info]\n")
-        f.write("ScriptType: v4.00+\n\n")
-
-        f.write("[V4+ Styles]\n")
-        f.write("Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding\n")
-        f.write("Style: Default,Noto Sans Devanagari,36,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1\n\n")
-
-        f.write("[Events]\n")
-        f.write("Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\n")
+# ================= SRT GENERATION =================
+def generate_srt(segments):
+    with open("subs.srt", "w", encoding="utf-8") as f:
 
         def fmt(t):
             h = int(t // 3600)
             m = int((t % 3600) // 60)
             s = int(t % 60)
-            cs = int((t - int(t)) * 100)
-            return f"{h}:{m:02}:{s:02}.{cs:02}"
+            ms = int((t - int(t)) * 1000)
+            return f"{h:02}:{m:02}:{s:02},{ms:03}"
 
-        for seg in segments:
+        for i, seg in enumerate(segments, 1):
             en = seg.text.strip()
             hi = translate_to_hindi(en)
 
-            f.write(
-                f"Dialogue: 0,{fmt(seg.start)},{fmt(seg.end)},Default,,0,0,0,,{hi}\n"
-            )
+            f.write(f"{i}\n")
+            f.write(f"{fmt(seg.start)} --> {fmt(seg.end)}\n")
+            f.write(f"{hi}\n\n")
 
 # ================= UI TABS =================
 tab1, tab2 = st.tabs(["📝 Text → Hindi", "🎬 Video → Hindi Captions"])
@@ -90,6 +80,8 @@ with tab2:
         st.video("input.mp4")
 
         if st.button("Generate Captions"):
+
+            # ===== Extract Audio =====
             with st.spinner("Extracting audio..."):
                 subprocess.run(
                     [
@@ -103,17 +95,20 @@ with tab2:
                     stderr=subprocess.DEVNULL
                 )
 
+            # ===== Transcribe =====
             with st.spinner("Transcribing & Translating..."):
                 segments, info = whisper_model.transcribe("audio.wav")
 
-            generate_ass(segments)
+            generate_srt(segments)
 
+            # ===== Burn SRT With Hindi Font =====
             with st.spinner("Burning captions into video..."):
                 subprocess.run(
                     [
                         "ffmpeg", "-y",
                         "-i", "input.mp4",
-                        "-vf", "ass=subs.ass",
+                        "-vf",
+                        "subtitles=subs.srt:fontsdir=fonts:force_style='FontName=Noto Sans Devanagari'",
                         "output.mp4"
                     ],
                     stdout=subprocess.DEVNULL,
