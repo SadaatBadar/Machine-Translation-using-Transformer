@@ -108,7 +108,7 @@ with tab2:
                         "ffmpeg", "-y",
                         "-i", "input.mp4",
                         "-vf",
-                        "subtitles=subs.srt:fontsdir=./fonts",
+                        "subtitles=subs.srt:fontsdir=fonts:force_style='FontName=Noto Sans Devanagari,FontSize=24'",
                         "output.mp4"
                     ],
                     stdout=subprocess.DEVNULL,
