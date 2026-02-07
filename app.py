@@ -5,7 +5,7 @@ from transformers import MarianMTModel, MarianTokenizer
 
 # ================= PAGE CONFIG =================
 st.set_page_config(page_title="Machine Translation Project", layout="wide")
-st.title("🌐 Machine Translation Using Transformers")
+st.title("🌐 HinSync")
 
 # ================= LOAD MODELS =================
 @st.cache_resource
@@ -112,3 +112,4 @@ with tab2:
 
             st.success(f"Detected language: {info.language}")
             st.video("output.mp4")
+
