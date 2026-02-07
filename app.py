@@ -1,107 +1,125 @@
 import streamlit as st
 import subprocess
-import os
-import tempfile
 from faster_whisper import WhisperModel
 from transformers import MarianMTModel, MarianTokenizer
 
-# ---------------- CONFIG ---------------- #
+# ================= PAGE CONFIG =================
+st.set_page_config(page_title="HinSync", layout="wide")
+st.title("🎧 HinSync")
 
-st.set_page_config(page_title="HinSync", page_icon="🎬")
-
-FONT_PATH = "fonts/NotoSansDevanagari.ttf"
-
-# Load Whisper (smaller model = faster)
+# ================= LOAD MODELS =================
 @st.cache_resource
-def load_whisper():
-    return WhisperModel("base", compute_type="int8")
+def load_models():
+    whisper = WhisperModel("base", device="cpu", compute_type="int8")
 
-# Load Translation Model
-@st.cache_resource
-def load_translation():
-    model_name = "Helsinki-NLP/opus-mt-en-hi"
-    tokenizer = MarianTokenizer.from_pretrained(model_name)
-    model = MarianMTModel.from_pretrained(model_name)
-    return tokenizer, model
+    tokenizer = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-hi")
+    translator = MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-en-hi")
 
-whisper_model = load_whisper()
-tokenizer, translation_model = load_translation()
+    return whisper, tokenizer, translator
 
-# ---------------- UI ---------------- #
 
-st.title("🎬 HinSync")
-st.write("Upload video → English Speech → Hindi Subtitles")
+whisper_model, tokenizer, translator = load_models()
 
-uploaded_video = st.file_uploader("Upload Video", type=["mp4", "mov", "avi"])
-
-# ---------------- FUNCTIONS ---------------- #
-
-def transcribe_audio(video_path):
-    segments, _ = whisper_model.transcribe(video_path, beam_size=1)
-    return list(segments)
-
-def translate_text(texts):
-    batch = tokenizer(texts, return_tensors="pt", padding=True)
-    translated = translation_model.generate(**batch)
+# ================= BATCH TRANSLATION =================
+def translate_batch(texts):
+    batch = tokenizer(texts, return_tensors="pt", padding=True, truncation=True)
+    translated = translator.generate(**batch)
     return tokenizer.batch_decode(translated, skip_special_tokens=True)
 
-def format_time(seconds):
-    hrs = int(seconds // 3600)
-    mins = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    millis = int((seconds - int(seconds)) * 1000)
+# ================= SRT GENERATION =================
+def generate_srt(segments):
 
-    return f"{hrs:02}:{mins:02}:{secs:02},{millis:03}"
+    texts = [seg.text.strip() for seg in segments]
+    translations = translate_batch(texts)
 
-def create_srt(segments, translations, srt_path):
-    with open(srt_path, "w", encoding="utf-8") as f:
-        for i, (seg, trans) in enumerate(zip(segments, translations)):
-            f.write(f"{i+1}\n")
-            f.write(f"{format_time(seg.start)} --> {format_time(seg.end)}\n")
-            f.write(f"{trans}\n\n")
+    with open("subs.srt", "w", encoding="utf-8") as f:
 
-def burn_subtitles(video_path, srt_path, output_path):
+        def fmt(t):
+            h = int(t // 3600)
+            m = int((t % 3600) // 60)
+            s = int(t % 60)
+            ms = int((t - int(t)) * 1000)
+            return f"{h:02}:{m:02}:{s:02},{ms:03}"
 
-    command = [
-        "ffmpeg",
-        "-i", video_path,
-        "-vf", f"subtitles={srt_path}:force_style='FontName=Noto Sans Devanagari'",
-        "-c:a", "copy",
-        output_path,
-        "-y"
-    ]
+        for i, (seg, hi) in enumerate(zip(segments, translations), 1):
 
-    subprocess.run(command)
+            f.write(f"{i}\n")
+            f.write(f"{fmt(seg.start)} --> {fmt(seg.end)}\n")
+            f.write(f"{hi}\n\n")
 
-# ---------------- MAIN PROCESS ---------------- #
+# ================= CREATE TABS =================
+tab1, tab2 = st.tabs(["📝 Text → Hindi", "🎬 Video → Hindi Captions"])
 
-if uploaded_video:
+# =====================================================
+# TAB 1 → TEXT TRANSLATOR
+# =====================================================
+with tab1:
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_video:
-        temp_video.write(uploaded_video.read())
-        video_path = temp_video.name
+    st.subheader("English → Hindi Translator")
 
-    st.info("🎙 Transcribing Audio...")
-    segments = transcribe_audio(video_path)
+    user_text = st.text_area("Enter English text")
 
-    texts = [seg.text for seg in segments]
+    if st.button("Translate Text"):
 
-    st.info("🌐 Translating to Hindi...")
-    translations = translate_text(texts)
+        if user_text.strip():
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".srt") as temp_srt:
-        srt_path = temp_srt.name
+            translation = translate_batch([user_text])[0]
 
-    create_srt(segments, translations, srt_path)
+            st.success("Translation:")
+            st.write(translation)
 
-    output_video = video_path.replace(".mp4", "_subtitled.mp4")
+        else:
+            st.warning("Please enter some text")
 
-    st.info("🔥 Burning Subtitles...")
-    burn_subtitles(video_path, srt_path, output_video)
+# =====================================================
+# TAB 2 → VIDEO SUBTITLES
+# =====================================================
+with tab2:
 
-    st.success("✅ Done!")
+    st.subheader("Video → Hindi Captions")
 
-    st.video(output_video)
+    video_file = st.file_uploader(
+        "Upload a video",
+        type=["mp4", "mov", "mkv"]
+    )
 
-    with open(output_video, "rb") as f:
-        st.download_button("⬇ Download Video", f, file_name="Hindi_Subtitled.mp4")
+    if video_file:
+
+        with open("input.mp4", "wb") as f:
+            f.write(video_file.read())
+
+        st.video("input.mp4")
+
+        if st.button("Generate Captions"):
+
+            # Extract audio
+            with st.spinner("Extracting audio..."):
+                subprocess.run(
+                    ["ffmpeg", "-y", "-i", "input.mp4", "-ar", "16000", "-ac", "1", "audio.wav"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+
+            # Whisper transcription
+            with st.spinner("Transcribing speech..."):
+                segments, info = whisper_model.transcribe(
+                    "audio.wav",
+                    beam_size=1
+                )
+
+                segments = list(segments)
+
+            # Subtitle generation
+            with st.spinner("Translating & generating subtitles..."):
+                generate_srt(segments)
+
+            # Burn subtitles
+            with st.spinner("Burning subtitles into video..."):
+                subprocess.run(
+                    ["ffmpeg", "-y", "-i", "input.mp4", "-vf", "subtitles=subs.srt", "output.mp4"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+
+            st.success(f"Detected language: {info.language}")
+            st.video("output.mp4")
