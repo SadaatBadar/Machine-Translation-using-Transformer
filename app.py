@@ -4,7 +4,7 @@ from faster_whisper import WhisperModel
 from transformers import MarianMTModel, MarianTokenizer
 
 # ================= PAGE CONFIG =================
-st.set_page_config(page_title="Machine Translation Project", layout="wide")
+st.set_page_config(page_title="HinSync", layout="wide")
 st.title("🎧 HinSync")
 
 # ================= LOAD MODELS =================
@@ -103,7 +103,7 @@ with tab2:
                     [
                         "ffmpeg", "-y",
                         "-i", "input.mp4",
-                        "-vf", "subtitles=subs.srt",
+                        "-vf", "subtitles=subs.srt:fontsdir=fonts",
                         "output.mp4"
                     ],
                     stdout=subprocess.DEVNULL,
@@ -112,5 +112,3 @@ with tab2:
 
             st.success(f"Detected language: {info.language}")
             st.video("output.mp4")
-
-
