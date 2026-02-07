@@ -1,100 +1,114 @@
 import streamlit as st
+import subprocess
+from faster_whisper import WhisperModel
 from transformers import MarianMTModel, MarianTokenizer
 
-# Load model (English → Hindi)
+# ================= PAGE CONFIG =================
+st.set_page_config(page_title="Machine Translation Project", layout="wide")
+st.title("🌐 Machine Translation Using Transformers")
+
+# ================= LOAD MODELS =================
 @st.cache_resource
-def load_model():
-    model_name = "Helsinki-NLP/opus-mt-en-hi"
-    tokenizer = MarianTokenizer.from_pretrained(model_name)
-    model = MarianMTModel.from_pretrained(model_name)
-    return tokenizer, model
+def load_models():
+    whisper = WhisperModel("small", device="cpu", compute_type="int8")
+    tokenizer = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-hi")
+    translator = MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-en-hi")
+    return whisper, tokenizer, translator
 
-tokenizer, model = load_model()
+whisper_model, tokenizer, translator = load_models()
 
-#  UI Design 
-st.set_page_config(page_title="Machine Translation using Transformer", page_icon="🌍", layout="centered")
+# ================= TRANSLATION =================
+def translate_to_hindi(text):
+    inputs = tokenizer([text], return_tensors="pt", padding=True, truncation=True)
+    outputs = translator.generate(**inputs, max_length=200)
+    return tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-# Custom CSS for background & styling
-st.markdown("""
-    <style>
-    /* Gradient background */
-    .stApp {
-        background: linear-gradient(135deg, #1f1c2c, #928DAB);
-        color: white;
-    }
+# ================= SRT GENERATION =================
+def generate_srt(segments):
+    with open("subs.srt", "w", encoding="utf-8") as f:
+        for i, seg in enumerate(segments, 1):
 
-    /* Title */
-    .big-title {
-        text-align: center;
-        font-size: 42px;
-        font-weight: bold;
-        color: #FFD700;
-        text-shadow: 2px 2px 8px #000;
-    }
+            def fmt(t):
+                h = int(t // 3600)
+                m = int((t % 3600) // 60)
+                s = int(t % 60)
+                ms = int((t - int(t)) * 1000)
+                return f"{h:02}:{m:02}:{s:02},{ms:03}"
 
-    /* Text area */
-    textarea {
-        background-color: #2E2E3A !important;
-        color: white !important;
-        border-radius: 10px !important;
-        border: 1px solid #FFD700 !important;
-    }
+            en = seg.text.strip()
+            hi = translate_to_hindi(en)
 
-    /* Button */
-    div.stButton > button {
-        background-color: #FFD700;
-        color: black;
-        font-weight: bold;
-        border-radius: 10px;
-        height: 50px;
-        font-size: 18px;
-        transition: 0.3s;
-    }
-    div.stButton > button:hover {
-        background-color: #FFA500;
-        color: white;
-        transform: scale(1.05);
-    }
+            f.write(f"{i}\n")
+            f.write(f"{fmt(seg.start)} --> {fmt(seg.end)}\n")
+            f.write(f"{hi}\n\n")
 
-    /* Translation box */
-    .translation-box {
-        font-size: 22px;
-        background: rgba(255,255,255,0.15);
-        padding: 15px;
-        border-radius: 12px;
-        border: 1px solid #FFD700;
-        backdrop-filter: blur(10px);
-        margin-top: 15px;
-    }
+# ================= UI TABS =================
+tab1, tab2 = st.tabs(["📝 Text → Hindi", "🎬 Video → Hindi Captions"])
 
-    /* Footer */
-    .footer {
-        text-align: center;
-        font-size: 14px;
-        margin-top: 40px;
-        color: #CCCCCC;
-    }
-    </style>
-""", unsafe_allow_html=True)
+# =====================================================
+# TAB 1: TEXT TRANSLATION
+# =====================================================
+with tab1:
+    st.subheader("English → Hindi Translator")
 
-# Title
-st.markdown("<h1 class='big-title'>🌍 Machine Translation using Transformer</h1>", unsafe_allow_html=True)
-st.write("### Translate English text into Hindi in real-time using a Transformer-based MarianMT model.")
+    user_text = st.text_area("Enter English text")
 
-# Input area
-english_text = st.text_area("✍️ Enter English text here:", "", height=150, placeholder="Type something like: 'How are you today?'")
+    if st.button("Translate Text"):
+        if user_text.strip():
+            hindi = translate_to_hindi(user_text)
+            st.success("Translation:")
+            st.write(hindi)
+        else:
+            st.warning("Please enter some text")
 
-# Translate button
-if st.button("🚀 Translate"):
-    if english_text.strip():
-        inputs = tokenizer(english_text, return_tensors="pt", padding=True, truncation=True)
-        translated_tokens = model.generate(**inputs, max_length=100)
-        hindi_text = tokenizer.decode(translated_tokens[0], skip_special_tokens=True)
-        
-        st.success("✅ Translation Successful!")
-        st.markdown(f"<div class='translation-box'>{hindi_text}</div>", unsafe_allow_html=True)
-    else:
-        st.warning("⚠️ Please enter some English text above to translate.")
+# =====================================================
+# TAB 2: VIDEO CAPTIONS (ON VIDEO)
+# =====================================================
+with tab2:
+    st.subheader("Video → Hindi Captions (Burned into Video)")
 
-# Footer
-st.markdown("<div class='footer'>✨ Made with ❤️ using Hugging Face Transformers & Streamlit ✨</div>", unsafe_allow_html=True)
+    video_file = st.file_uploader(
+        "Upload a video",
+        type=["mp4", "mov", "mkv"],
+        key="video"
+    )
+
+    if video_file:
+        with open("input.mp4", "wb") as f:
+            f.write(video_file.read())
+
+        st.video("input.mp4")
+
+        if st.button("Generate Captions"):
+            with st.spinner("Extracting audio..."):
+                subprocess.run(
+                    [
+                        "ffmpeg", "-y",
+                        "-i", "input.mp4",
+                        "-ar", "16000",
+                        "-ac", "1",
+                        "audio.wav"
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+
+            with st.spinner("Transcribing & Translating..."):
+                segments, info = whisper_model.transcribe("audio.wav")
+
+            generate_srt(segments)
+
+            with st.spinner("Burning captions into video..."):
+                subprocess.run(
+                    [
+                        "ffmpeg", "-y",
+                        "-i", "input.mp4",
+                        "-vf", "subtitles=subs.srt",
+                        "output.mp4"
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+
+            st.success(f"Detected language: {info.language}")
+            st.video("output.mp4")
