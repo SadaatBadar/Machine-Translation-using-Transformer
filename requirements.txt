@@ -8,5 +8,5 @@ huggingface-hub
 faster-whisper
 ffmpeg-python
 pysrt
-
+torchvision
 
