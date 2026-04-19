@@ -1,4 +1,3 @@
-```python
 import streamlit as st
 import tempfile
 import subprocess
@@ -211,4 +210,3 @@ with tabs[1]:
 
             st.subheader("Hindi Output")
             st.write(result)
-```
