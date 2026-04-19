@@ -20,7 +20,7 @@ FONT_PATH = os.path.join("fonts", "NotoSansDevanagari.ttf")
 
 @st.cache_resource
 def load_whisper():
-    return WhisperModel("medium", device="cpu", compute_type="int8")
+    return WWhisperModel("base", device="cpu", compute_type="int8")
 
 @st.cache_resource
 def load_translator():
