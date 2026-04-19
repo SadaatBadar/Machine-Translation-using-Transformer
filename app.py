@@ -9,9 +9,8 @@ import torch
 st.set_page_config(page_title="HinSync", layout="wide")
 
 # ======================
-# FONT PATH FIX
+# FONT PATH
 # ======================
-
 FONT_PATH = os.path.join("fonts", "NotoSansDevanagari.ttf")
 
 # ======================
@@ -20,7 +19,8 @@ FONT_PATH = os.path.join("fonts", "NotoSansDevanagari.ttf")
 
 @st.cache_resource
 def load_whisper():
-    return WWhisperModel("base", device="cpu", compute_type="int8")
+    # ✅ Lightweight for Streamlit Cloud
+    return WhisperModel("base", device="cpu", compute_type="int8")
 
 @st.cache_resource
 def load_translator():
@@ -54,7 +54,7 @@ def extract_clean_audio(video_path):
     return clean_audio
 
 # ======================
-# TRANSLATION FUNCTIONS
+# TRANSLATION
 # ======================
 
 def clean_text(text):
@@ -74,12 +74,12 @@ def translate_text(text):
     )
 
     with torch.no_grad():
-        translated = translator_model.generate(**inputs, num_beams=4)
+        translated = translator_model.generate(**inputs, num_beams=2)
 
     return tokenizer.decode(translated[0], skip_special_tokens=True)
 
 # ======================
-# TIMESTAMP FORMAT
+# TIMESTAMP
 # ======================
 
 def format_timestamp(seconds):
@@ -102,7 +102,7 @@ def generate_srt(segments, filepath):
 
             text = seg.text.strip()
 
-            # Split long segments for better translation
+            # Split long sentences
             if len(text.split()) > 20:
                 parts = text.split(".")
                 hindi = " ".join([translate_text(p) for p in parts if p.strip()])
@@ -131,12 +131,14 @@ def burn_subtitles(video_path, srt_path, output_path):
         "ffmpeg",
         "-i", video_path,
         "-vf", vf,
+        "-preset", "ultrafast",   # ✅ faster + less memory
+        "-crf", "28",             # ✅ lighter output
         "-c:a", "copy",
         output_path,
         "-y"
     ]
 
-    subprocess.run(command, check=True)
+    subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 # ======================
 # UI
@@ -146,9 +148,9 @@ st.title("🎬 HinSync - English Speech → Hindi Subtitles")
 
 tabs = st.tabs(["🎥 Subtitle Generator", "🌐 Text Translator"])
 
-# =================================================
+# ======================
 # TAB 1 - VIDEO
-# =================================================
+# ======================
 
 with tabs[0]:
 
@@ -170,8 +172,8 @@ with tabs[0]:
             with st.spinner("🧠 Transcribing..."):
                 segments, _ = whisper_model.transcribe(
                     clean_audio,
-                    beam_size=5,
-                    best_of=5,
+                    beam_size=1,   # ✅ reduced load
+                    best_of=1,
                     temperature=0
                 )
                 segments = list(segments)
@@ -186,16 +188,22 @@ with tabs[0]:
 
             st.success("✅ Done!")
 
-            with open(output_video, "rb") as f:
-                st.download_button(
-                    "Download Video",
-                    f,
-                    file_name="hinsync_output.mp4"
-                )
+            # ✅ Show video first (avoids crash)
+            if os.path.exists(output_video):
+                st.video(output_video)
 
-# =================================================
-# TAB 2 - TEXT TRANSLATOR
-# =================================================
+                with open(output_video, "rb") as f:
+                    st.download_button(
+                        "Download Video",
+                        f,
+                        file_name="hinsync_output.mp4"
+                    )
+            else:
+                st.error("Output video not found")
+
+# ======================
+# TAB 2 - TEXT
+# ======================
 
 with tabs[1]:
 
